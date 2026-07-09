@@ -1,0 +1,8 @@
+# Ignore sensitive credentials
+.env
+
+# Ignore node modules
+node_modules/
+
+# Ignore all log files
+*.log
