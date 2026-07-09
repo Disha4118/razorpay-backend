@@ -1,56 +1,34 @@
+const Razorpay = require("razorpay");
 const crypto = require("crypto");
 
-exports.webhook = async (req, res) => {
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// =======================
+// Create Order
+// =======================
+
+exports.createOrder = async (req, res) => {
 
     try {
 
-        const webhookSignature =
-            req.headers["x-razorpay-signature"];
+        const { amount } = req.body;
 
-        const generatedSignature = crypto
-            .createHmac(
-                "sha256",
-                process.env.WEBHOOK_SECRET
-            )
-            .update(req.body) // Raw Buffer
-            .digest("hex");
+        const options = {
 
-        if (generatedSignature !== webhookSignature) {
+            amount: amount * 100,
 
-            return res.status(400).json({
-                success: false,
-                message: "Invalid Webhook Signature"
-            });
+            currency: "INR",
 
-        }
+            receipt: "receipt_" + Date.now()
 
-        const event = JSON.parse(req.body.toString());
+        };
 
-        console.log("✅ Webhook Verified");
+        const order = await razorpay.orders.create(options);
 
-        console.log("Event :", event.event);
-
-        if (event.event === "payment.captured") {
-
-            const payment =
-                event.payload.payment.entity;
-
-            console.log("Payment Id :", payment.id);
-
-            console.log("Amount :", payment.amount);
-
-            console.log("Status :", payment.status);
-
-            // TODO:
-            // MongoDB update
-            // Booking Confirm
-            // Send Email
-
-        }
-
-        res.status(200).json({
-            success: true
-        });
+        res.json(order);
 
     }
 
@@ -59,7 +37,180 @@ exports.webhook = async (req, res) => {
         console.log(err);
 
         res.status(500).json({
-            success: false
+
+            success: false,
+
+            message: "Order Creation Failed"
+
+        });
+
+    }
+
+};
+
+
+// =======================
+// Verify Payment
+// =======================
+
+exports.verifyPayment = async (req, res) => {
+
+    try {
+
+        const {
+
+            razorpay_order_id,
+
+            razorpay_payment_id,
+
+            razorpay_signature
+
+        } = req.body;
+
+
+        const generatedSignature = crypto
+
+            .createHmac(
+
+                "sha256",
+
+                process.env.RAZORPAY_KEY_SECRET
+
+            )
+
+            .update(
+
+                razorpay_order_id +
+
+                "|" +
+
+                razorpay_payment_id
+
+            )
+
+            .digest("hex");
+
+
+        if (generatedSignature === razorpay_signature) {
+
+            return res.json({
+
+                success: true,
+
+                message: "Payment Verified"
+
+            });
+
+        }
+
+
+        return res.status(400).json({
+
+            success: false,
+
+            message: "Invalid Signature"
+
+        });
+
+    }
+
+    catch (err) {
+
+        console.log(err);
+
+        return res.status(500).json({
+
+            success: false,
+
+            message: err.message
+
+        });
+
+    }
+
+};
+
+
+// =======================
+// Webhook
+// =======================
+
+exports.webhook = async (req, res) => {
+
+    try {
+
+        const razorpaySignature = req.headers["x-razorpay-signature"];
+
+        const generatedSignature = crypto
+
+            .createHmac(
+
+                "sha256",
+
+                process.env.WEBHOOK_SECRET
+
+            )
+
+            .update(req.body)
+
+            .digest("hex");
+
+
+        if (generatedSignature !== razorpaySignature) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message: "Invalid Webhook Signature"
+
+            });
+
+        }
+
+
+        const event = JSON.parse(req.body.toString());
+
+        console.log("✅ Webhook Verified");
+
+        console.log("Event :", event.event);
+
+
+        if (event.event === "payment.captured") {
+
+            const payment = event.payload.payment.entity;
+
+            console.log("Payment ID :", payment.id);
+
+            console.log("Amount :", payment.amount / 100);
+
+            console.log("Status :", payment.status);
+
+            // TODO:
+            // Save Payment in MongoDB
+            // Confirm Booking
+            // Send Email
+
+        }
+
+        return res.status(200).json({
+
+            success: true
+
+        });
+
+    }
+
+    catch (err) {
+
+        console.log(err);
+
+        return res.status(500).json({
+
+            success: false,
+
+            message: err.message
+
         });
 
     }
